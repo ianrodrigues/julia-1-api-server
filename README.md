@@ -4,6 +4,23 @@ A self-hosted HTTP API for [Julia-1](https://huggingface.co/SupersonicLabs/Julia
 
 Built with Python 3.11+, FastAPI, and Uvicorn. The server loads the model once, runs inference in a worker thread, and keeps model files in a persistent cache.
 
+## Quick run
+
+With Docker installed, pull and start the latest release from GitHub Container Registry:
+
+```bash
+docker run -d --name julia --pull=always \
+  -p 127.0.0.1:8000:8000 \
+  -v hf-cache:/root/.cache/huggingface \
+  ghcr.io/ianrodrigues/supersonic-julia-server:latest
+```
+
+No repository clone, Python installation, or `.env` file is needed. The first start downloads the model weights and tokenizer. The `hf-cache` volume keeps them for future runs.
+
+Follow startup with `docker logs -f julia`. Once the model is loaded, open [http://localhost:8000/docs](http://localhost:8000/docs) to try a sample request.
+
+If port 8000 is busy, use `-p 127.0.0.1:18000:8000` and open `http://localhost:18000/docs` instead. Stop the container with `docker stop julia` and start it again with `docker start julia`.
+
 ## Run with Docker Compose
 
 Install Docker with Compose, then run:
@@ -201,12 +218,7 @@ For API-only work, install just `requirements-dev.txt`. CI runs the fast tests o
 
 GitHub releases publish CPU images to `ghcr.io/ianrodrigues/supersonic-julia-server` for `linux/amd64` and `linux/arm64`.
 
-```bash
-docker run -d --name julia \
-  -p 127.0.0.1:8000:8000 \
-  -v hf_cache:/root/.cache/huggingface \
-  ghcr.io/ianrodrigues/supersonic-julia-server:0.1.0
-```
+The [quick run](#quick-run) command uses `latest`. To use a specific release, replace `:latest` with its version tag, such as `:0.1.0`.
 
 Release `v0.1.0` publishes tags `0.1.0`, `0.1`, and `latest`. Prereleases publish only the full version tag. Each image includes source and version labels, build provenance, and a software bill of materials (SBOM).
 

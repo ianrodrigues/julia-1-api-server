@@ -4,6 +4,7 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 JULIA_REVISION = "a85b127321d580d65176c89ced8273f305745d85"
+JULIA_RELEASE_DATE = "2026-09-23"
 
 
 class Settings(BaseSettings):
@@ -23,6 +24,12 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = Field(default=60, ge=0)
     rate_limit_burst: int = Field(default=10, ge=1)
     client_ip_header: str = ""
+    # Comma-separated bearer tokens; empty leaves the API open.
+    api_keys: str = ""
+
+    @property
+    def api_key_list(self) -> list[str]:
+        return [key.strip() for key in self.api_keys.split(",") if key.strip()]
 
     @model_validator(mode="after")
     def validate_context_budget(self) -> "Settings":

@@ -1,106 +1,156 @@
-"""The named-question contract exposed in OpenAPI and validated before inference."""
+"""The Jev-compatible System One contract exposed in OpenAPI and validated before inference."""
 
+import json
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 # Reject blank strings without modifying caller IDs, descriptions, or state text.
 Identifier = Annotated[
     str, StringConstraints(strict=True, min_length=1, max_length=128, pattern=r"\S")
 ]
-Description = Annotated[
-    str, StringConstraints(strict=True, min_length=1, max_length=4096, pattern=r"\S")
-]
+Text = Annotated[str, StringConstraints(strict=True, min_length=1, max_length=8192, pattern=r"\S")]
+# Jev lets instructions and criteria be structured; the model receives them as JSON text.
+Content = (
+    Text
+    | Annotated[dict[str, Any], Field(min_length=1)]
+    | Annotated[list[Any], Field(min_length=1)]
+)
+
+
+def render(content: Any) -> str:
+    """Render structured content the way the runtime renders structured state."""
+    return content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
 
 
 class QuestionBase(BaseModel):
     """Common question fields; unknown fields fail loudly instead of being ignored."""
 
     model_config = ConfigDict(extra="forbid")
-    instructions: Annotated[
-        str, StringConstraints(strict=True, min_length=1, max_length=8192, pattern=r"\S")
-    ]
+    instructions: Content
 
 
 class ChoiceQuestion(QuestionBase):
-    """Select a caller-defined ID from two through twenty descriptions."""
+    """Select a caller-defined option; a null description uses the option ID itself."""
 
     type: Literal["choice"]
-    criteria: dict[Identifier, Description] = Field(min_length=2, max_length=20)
+    criteria: dict[Identifier, Content | None] = Field(min_length=2, max_length=20)
 
 
 class ScoreQuestion(QuestionBase):
-    """Return the expected zero-based index of an ordered rubric."""
+    """Return the expected zero-based level of an ordered rubric."""
 
     type: Literal["score"]
-    criteria: list[Description] = Field(min_length=2, max_length=20)
+    criteria: list[Content] = Field(min_length=2, max_length=20)
+
+
+class NoulCriteria(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    true: Content | None = None
+    false: Content | None = None
 
 
 class NoulQuestion(QuestionBase):
-    """Return the probability of true, optionally using custom Boolean descriptions."""
+    """Return the probability of yes, optionally describing what yes and no mean."""
 
     type: Literal["noul"]
-    criteria: dict[Literal["false", "true"], Description] | None = None
-
-    @field_validator("criteria")
-    @classmethod
-    def validate_boolean_labels(cls, value: dict[str, str] | None) -> dict[str, str] | None:
-        if value is not None and set(value) != {"false", "true"}:
-            raise ValueError('noul criteria must contain exactly "false" and "true"')
-        return value
+    criteria: NoulCriteria | None = None
 
 
 Question = Annotated[ChoiceQuestion | ScoreQuestion | NoulQuestion, Field(discriminator="type")]
 
+STATE_EXAMPLE = "Help! My payouts have been failing for 3 days."
 
-class ClassifyRequest(BaseModel):
-    """One state shared by a bounded batch of independent questions."""
 
+class SystemOneRequest(BaseModel):
+    """One state shared by a bounded batch of independent, named questions."""
+
+    # Ignore top-level fields a newer Jev client may send, as Jev clients expect.
     model_config = ConfigDict(
-        extra="forbid",
+        extra="ignore",
         json_schema_extra={
             "examples": [
                 {
-                    "state": (
-                        "I was charged twice for the same order. "
-                        "Please refund the duplicate charge."
-                    ),
+                    "state": STATE_EXAMPLE,
+                    "model": "jev-latest",
                     "questions": {
-                        "team": {
+                        "department": {
                             "type": "choice",
-                            "instructions": "Which team should handle this request?",
+                            "instructions": "Which team should handle this?",
                             "criteria": {
-                                "billing": "Billing and payment disputes",
-                                "shipping": "Shipping and delivery",
-                                "access": "Account access and login",
+                                "billing": "Payments, invoicing, refunds",
+                                "technical": "Bugs, outages, integrations",
+                                "sales": "Pricing, upgrades, new accounts",
                             },
                         },
-                        "urgency": {
+                        "frustration": {
                             "type": "score",
-                            "instructions": "How urgently should this request be handled?",
-                            "criteria": ["Routine", "Soon", "Immediate"],
+                            "instructions": "How frustrated is the customer?",
+                            "criteria": ["Calm", "Frustrated", "Very angry"],
                         },
-                        "refund_needed": {
+                        "is_urgent": {
                             "type": "noul",
-                            "instructions": "Does the customer request a refund?",
+                            "instructions": "Does this convey urgency?",
                         },
                     },
                 }
             ]
         },
     )
-    state: Annotated[
-        str, StringConstraints(strict=True, min_length=1, max_length=131072, pattern=r"\S")
-    ]
+    state: (
+        Annotated[
+            str, StringConstraints(strict=True, min_length=1, max_length=131072, pattern=r"\S")
+        ]
+        | Annotated[dict[str, Any], Field(min_length=1)]
+        | Annotated[list[Any], Field(min_length=1)]
+    )
+    # Accepted for Jev compatibility; this server always answers with its own model.
+    model: str | None = None
     questions: dict[Identifier, Question] = Field(min_length=1, max_length=32)
 
 
-class ClassifyResponse(BaseModel):
-    """Preserve upstream answer fields and any future top-level payload metadata."""
+class Usage(BaseModel):
+    input_tokens: int
+    output_tokens: int
 
-    model_config = ConfigDict(extra="allow")
-    answers: dict[str, Any]
-    execution_time_ms: float = Field(ge=0)
+
+class NoulAnswer(BaseModel):
+    type: Literal["noul"]
+    noul: float = Field(ge=0, le=1)
+
+
+class ChoiceAnswer(BaseModel):
+    type: Literal["choice"]
+    choice: str
+    probabilities: dict[str, float]
+    confidence: float = Field(ge=0, le=1)
+
+
+class ScoreAnswer(BaseModel):
+    type: Literal["score"]
+    score: float
+    legend: dict[str, Any]
+    probabilities: dict[str, float]
+    confidence: float = Field(ge=0, le=1)
+
+
+Answer = Annotated[NoulAnswer | ChoiceAnswer | ScoreAnswer, Field(discriminator="type")]
+
+
+class SystemOneResponse(BaseModel):
+    model: str
+    answers: dict[str, Answer]
+    usage: Usage
+
+
+class ModelMetadata(BaseModel):
+    name: str
+    description: str
+    release_date: str
+
+
+class ListModelsResponse(BaseModel):
+    models: list[ModelMetadata]
 
 
 class HealthResponse(BaseModel):

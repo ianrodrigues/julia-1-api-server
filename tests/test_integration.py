@@ -16,7 +16,8 @@ def test_real_model_all_question_types_and_token_rejection():
         assert client.get("/health").status_code == 200
         assert client.get("/v1/info").json()["parameters"] > 140_000_000
         payload = {
-            "state": "I was charged twice for the same order.",
+            "state": {"ticket": "I was charged twice for the same order."},
+            "model": "jev-latest",
             "questions": {
                 "team": {
                     "type": "choice",
@@ -36,19 +37,22 @@ def test_real_model_all_question_types_and_token_rejection():
                 },
             },
         }
-        response = client.post("/v1/classify", json=payload)
+        response = client.post("/v1/systemone", json=payload)
         assert response.status_code == 200, response.text
-        answers = response.json()["answers"]
+        body = response.json()
+        answers = body["answers"]
         assert set(answers) == set(payload["questions"])
         assert answers["team"]["choice"] in {"billing", "shipping"}
         assert 0 <= answers["urgency"]["score"] <= 2
+        assert answers["urgency"]["legend"] == {"0": "Low", "1": "Medium", "2": "High"}
         for name in ("refund", "payment"):
+            assert set(answers[name]) == {"type", "noul"}
             assert 0 <= answers[name]["noul"] <= 1
-            assert set(answers[name]["probabilities"]) == {"false", "true"}
-        for answer in answers.values():
-            assert math.isclose(sum(answer["probabilities"].values()), 1, abs_tol=1e-6)
-        assert response.json()["execution_time_ms"] > 0
+        for name in ("team", "urgency"):
+            assert math.isclose(sum(answers[name]["probabilities"].values()), 1, abs_tol=1e-6)
+            assert 0 <= answers[name]["confidence"] <= 1
+        assert body["usage"]["input_tokens"] > 0
         payload["questions"]["team"]["criteria"]["billing"] = "billing " * 100
-        response = client.post("/v1/classify", json=payload)
+        response = client.post("/v1/systemone", json=payload)
         assert response.status_code == 422
         assert "48-token" in response.json()["detail"]

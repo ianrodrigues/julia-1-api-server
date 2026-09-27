@@ -1,16 +1,17 @@
 """FastAPI lifecycle, endpoints, and an environment-aware Uvicorn entrypoint."""
 
 import asyncio
+import hmac
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app import __version__
-from app.config import Settings
+from app.config import JULIA_RELEASE_DATE, Settings
 from app.ratelimit import RateLimiter, retry_after_header
-from app.schemas import ClassifyRequest, ClassifyResponse, HealthResponse
+from app.schemas import HealthResponse, ListModelsResponse, SystemOneRequest, SystemOneResponse
 from app.service import (
     InferenceBusyError,
     InferenceService,
@@ -20,10 +21,14 @@ from app.service import (
 
 logger = logging.getLogger(__name__)
 
+# Jev's status for a temporarily overloaded service; its SDKs retry it with backoff.
+OVERLOADED = 529
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Create a separate lifecycle for each process; serve with one Uvicorn worker."""
     settings = settings or Settings()
+    api_keys = [key.encode() for key in settings.api_key_list]
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -38,7 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(
         title="Supersonic's Julia-1 Server",
         description=(
-            "Turn text into decisions with Julia-1: classify inputs, "
+            "A Jev-compatible System One API for Julia-1: classify inputs, "
             "score them against a rubric, and evaluate yes/no questions."
         ),
         version=__version__,
@@ -62,6 +67,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             return await call_next(request)
 
+    def authenticate(request: Request) -> None:
+        if not api_keys:
+            return
+        scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+        # Compare against every key so timing does not reveal which one nearly matched.
+        matches = [hmac.compare_digest(token.strip().encode(), key) for key in api_keys]
+        if scheme.lower() != "bearer" or not any(matches):
+            raise HTTPException(
+                401, "Missing or invalid API key", headers={"WWW-Authenticate": "Bearer"}
+            )
+
     @application.get("/", include_in_schema=False)
     async def root():
         return RedirectResponse(url="/docs")
@@ -81,40 +97,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
-    @application.get("/v1/info")
+    @application.get("/v1/info", dependencies=[Depends(authenticate)])
     async def info(request: Request):
         service = getattr(request.app.state, "service", None)
         if service is None or not service.loaded:
             raise HTTPException(503, "Model is not ready")
         return service.info()
 
+    @application.get(
+        "/v1/models", response_model=ListModelsResponse, dependencies=[Depends(authenticate)]
+    )
+    async def models():
+        return {
+            "models": [
+                {
+                    "name": settings.model_id,
+                    "description": "Supersonic Labs' Julia-1 decision model, served locally.",
+                    "release_date": JULIA_RELEASE_DATE,
+                }
+            ]
+        }
+
     @application.post(
-        "/v1/classify",
-        response_model=ClassifyResponse,
+        "/v1/systemone",
+        response_model=SystemOneResponse,
+        dependencies=[Depends(authenticate)],
         responses={
+            401: {"description": "Missing or invalid API key"},
             422: {"description": "Invalid question or token budget"},
             429: {"description": "Rate limit exceeded"},
-            503: {"description": "Model unavailable or queue full"},
+            OVERLOADED: {"description": "Inference queue is full"},
+            503: {"description": "Model unavailable"},
             500: {"description": "Inference failed"},
         },
     )
-    async def classify(payload: ClassifyRequest, request: Request):
+    async def system_one(payload: SystemOneRequest, request: Request):
         service = getattr(request.app.state, "service", None)
         if service is None:
             raise HTTPException(503, "Model is not ready")
         try:
-            return await service.predict(payload)
+            result = await service.predict(payload)
         except ModelUnavailableError as error:
             raise HTTPException(503, "Model is not ready") from error
         except InferenceBusyError as error:
             raise HTTPException(
-                503, "Inference queue is full; retry later", headers={"Retry-After": "1"}
+                OVERLOADED, "Inference queue is full; retry later", headers={"Retry-After": "1"}
             ) from error
         except InvalidInputError as error:
             raise HTTPException(422, str(error)) from error
         except Exception as error:
             logger.exception("Inference failed")
             raise HTTPException(500, "Inference failed") from error
+        elapsed = result.pop("execution_time_ms")
+        return JSONResponse(
+            content=SystemOneResponse.model_validate(result).model_dump(mode="json"),
+            headers={"Server-Timing": f"inference;dur={elapsed}"},
+        )
 
     return application
 

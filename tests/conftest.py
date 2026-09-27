@@ -11,6 +11,35 @@ from app.config import Settings
 from app.main import create_app
 
 
+def runtime_predict(state, questions):
+    """Answer like the pinned runtime: probabilities 0.7, 0.2, 0.1, ... in criteria order."""
+    answers = {}
+    for name, question in questions.items():
+        kind, criteria = question["type"], question.get("criteria")
+        keys = (
+            ["false", "true"]
+            if kind == "noul"
+            else [str(i) for i in range(len(criteria))]
+            if kind == "score"
+            else list(criteria)
+        )
+        weights = [2**-i for i in range(len(keys))]
+        probabilities = {
+            key: weight / sum(weights) for key, weight in zip(keys, weights, strict=True)
+        }
+        answer = {"type": kind, "probabilities": probabilities}
+        if kind == "choice":
+            answer["choice"] = keys[0]
+        elif kind == "score":
+            answer["score"] = sum(i * p for i, p in enumerate(probabilities.values()))
+        else:
+            answer["noul"] = probabilities["true"]
+        if kind != "noul":
+            answer["max_probability"] = max(probabilities.values())
+        answers[name] = answer
+    return {"answers": answers}
+
+
 @pytest.fixture
 def fake_runtime(monkeypatch):
     engine = Mock()
@@ -22,28 +51,20 @@ def fake_runtime(monkeypatch):
     engine.strict_encoding = True
     engine.transformer_backend = "torch"
     engine.batch_size = 1
-    engine.predict.return_value = {
-        "answers": {
-            "team": {
-                "type": "choice",
-                "choice": "billing",
-                "probabilities": {"billing": 0.9, "shipping": 0.1},
-                "max_probability": 0.9,
-            }
-        },
-        "upstream_metadata": "preserved",
-    }
+    engine.encoding_info.side_effect = lambda rows: [{"tokens": 100} for _ in rows]
+    engine.predict.side_effect = runtime_predict
     download = Mock(return_value="/cache/snapshots/pinned")
     loader = Mock(return_value=engine)
     monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(snapshot_download=download))
     monkeypatch.setitem(sys.modules, "julia", SimpleNamespace(load_model=loader))
-    return SimpleNamespace(engine=engine, download=download, loader=loader)
+    return SimpleNamespace(engine=engine, download=download, loader=loader, predict=runtime_predict)
 
 
 @pytest.fixture
 def payload():
     return {
         "state": "I was charged twice.",
+        "model": "jev-latest",
         "questions": {
             "team": {
                 "type": "choice",

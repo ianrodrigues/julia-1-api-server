@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Breaking:** the API is now Jev-compatible. `POST /v1/systemone` replaces `POST /v1/classify` and uses TypeSafe's Jev request and response format, so Jev clients and SDKs work by changing the base URL.
+- Answers use Jev's fields: `confidence` replaces `max_probability`, score answers include `legend`, noul answers carry only `noul`, and responses include `model` and `usage`. Inference time moved to the `Server-Timing` header.
+- `state`, instructions, and criteria accept JSON objects and arrays; `null` choice descriptions and partial noul criteria are accepted.
+- `GET /v1/models` lists the served model.
+- Optional bearer-token authentication with `API_KEYS`.
+- A full inference queue returns `529`, as Jev does, instead of `503`.
 - Per-client rate limiting with HTTP 429 and `Retry-After`, configured by `RATE_LIMIT_PER_MINUTE` and `RATE_LIMIT_BURST`.
 - `CLIENT_IP_HEADER` identifies clients behind a proxy, such as `CF-Connecting-IP` for Cloudflare Tunnel.
 

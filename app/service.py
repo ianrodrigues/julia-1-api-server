@@ -8,7 +8,14 @@ from time import perf_counter
 from typing import Any
 
 from app.config import JULIA_REVISION, Settings
-from app.schemas import ClassifyRequest
+from app.schemas import (
+    ChoiceQuestion,
+    NoulQuestion,
+    Question,
+    ScoreQuestion,
+    SystemOneRequest,
+    render,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +113,7 @@ class InferenceService:
         """Return observed model settings, without exposing cache paths or secrets."""
         return {**self._info, "model_loaded": self.loaded}
 
-    async def predict(self, request: ClassifyRequest) -> dict[str, Any]:
+    async def predict(self, request: SystemOneRequest) -> dict[str, Any]:
         """Admit a request without blocking the event loop or growing an unbounded queue."""
         if not self.loaded:
             raise ModelUnavailableError
@@ -124,41 +131,94 @@ class InferenceService:
         if not future.cancelled():
             future.exception()
 
-    def _predict(self, request: ClassifyRequest) -> dict[str, Any]:
+    def _predict(self, request: SystemOneRequest) -> dict[str, Any]:
         started = perf_counter()
         questions = {
-            name: question.model_dump(exclude_none=True)
-            for name, question in request.questions.items()
+            name: runtime_question(question) for name, question in request.questions.items()
         }
+        rows = [
+            {
+                "state": request.state,
+                "question": question["instructions"],
+                "type": question["type"],
+                "options": options(question),
+            }
+            for question in questions.values()
+        ]
         # Audit encoding separately: only input errors become HTTP 422. A later
         # model/scoring ValueError is a server failure, never blamed on the client.
-        rows = []
-        for question in questions.values():
-            criteria = question.get("criteria")
-            if question["type"] == "noul":
-                criteria = criteria or {"false": "false", "true": "true"}
-                options = [criteria["false"], criteria["true"]]
-            elif isinstance(criteria, dict):
-                options = list(criteria.values())
-            else:
-                options = criteria
-            rows.append(
-                {
-                    "state": request.state,
-                    "question": question["instructions"],
-                    "type": question["type"],
-                    "options": options,
-                }
-            )
         try:
-            self._engine.encoding_info(rows)
+            encoded = self._engine.encoding_info(rows)
         except ValueError as error:
             raise InvalidInputError(str(error)) from error
         payload = self._engine.predict(state=request.state, questions=questions)
-        return {**payload, "execution_time_ms": round((perf_counter() - started) * 1000, 3)}
+        answers = {
+            name: jev_answer(question, payload["answers"][name])
+            for name, question in request.questions.items()
+        }
+        return {
+            "model": self.settings.model_id,
+            "answers": answers,
+            # Julia scores every question in one pass and generates no tokens.
+            "usage": {"input_tokens": sum(row["tokens"] for row in encoded), "output_tokens": 0},
+            "execution_time_ms": round((perf_counter() - started) * 1000, 3),
+        }
 
     async def close(self) -> None:
         """Stop admissions and drain work before releasing the resident engine."""
         self._closing = True
         await asyncio.to_thread(self._executor.shutdown, wait=True, cancel_futures=False)
         self._engine = None
+
+
+def runtime_question(question: Question) -> dict[str, Any]:
+    """Render Jev's structured and optional descriptions into the runtime's text-only form."""
+    runtime = {"type": question.type, "instructions": render(question.instructions)}
+    if isinstance(question, ChoiceQuestion):
+        runtime["criteria"] = {
+            key: key if value is None else render(value) for key, value in question.criteria.items()
+        }
+    elif isinstance(question, ScoreQuestion):
+        runtime["criteria"] = [render(level) for level in question.criteria]
+    elif isinstance(question, NoulQuestion) and question.criteria is not None:
+        criteria = question.criteria
+        runtime["criteria"] = {
+            "false": "false" if criteria.false is None else render(criteria.false),
+            "true": "true" if criteria.true is None else render(criteria.true),
+        }
+    return runtime
+
+
+def options(question: dict[str, Any]) -> list[str]:
+    criteria = question.get("criteria")
+    if question["type"] == "noul":
+        criteria = criteria or {"false": "false", "true": "true"}
+        return [criteria["false"], criteria["true"]]
+    return list(criteria.values()) if isinstance(criteria, dict) else criteria
+
+
+def confidence(probabilities: dict[str, float]) -> float:
+    """1 when all mass is on one option, 0 when it is spread evenly, as Jev documents."""
+    count = len(probabilities)
+    return max(0.0, min(1.0, (count * max(probabilities.values()) - 1) / (count - 1)))
+
+
+def jev_answer(question: Question, raw: dict[str, Any]) -> dict[str, Any]:
+    """Reshape a runtime answer into Jev's answer fields for the same question type."""
+    if question.type == "noul":
+        return {"type": "noul", "noul": raw["noul"]}
+    probabilities = raw["probabilities"]
+    if question.type == "choice":
+        return {
+            "type": "choice",
+            "choice": raw["choice"],
+            "probabilities": probabilities,
+            "confidence": confidence(probabilities),
+        }
+    return {
+        "type": "score",
+        "score": raw["score"],
+        "legend": {str(level): value for level, value in enumerate(question.criteria)},
+        "probabilities": probabilities,
+        "confidence": confidence(probabilities),
+    }

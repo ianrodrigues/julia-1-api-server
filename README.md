@@ -1,6 +1,8 @@
 # Supersonic's Julia-1 Server
 
-A self-hosted HTTP API for [Julia-1](https://huggingface.co/SupersonicLabs/Julia-1). Send text and questions. Get classifications, scores, and yes/no probabilities.
+A self-hosted, **Jev-compatible** HTTP API for [Julia-1](https://huggingface.co/SupersonicLabs/Julia-1). Send text or JSON and typed questions. Get classifications, scores, and yes/no probabilities.
+
+The server implements TypeSafe's [Jev API](https://docs.typesafe.ai/api) (`POST /v1/systemone` and `GET /v1/models`). Code written for Jev, including TypeSafe's SDKs, can switch to this server by changing only the base URL and API key. See [Switching from Jev](#switching-from-jev) for the differences to expect.
 
 Built with Python 3.11+, FastAPI, and Uvicorn. The server loads the model once, runs inference in a worker thread, and keeps model files in a persistent cache.
 
@@ -53,85 +55,120 @@ Model files stay in the `hf-cache` volume. `docker compose down -v` deletes that
 
 ## Send a request
 
+The request and response formats are the same as Jev's:
+
 ```bash
-curl --fail-with-body http://localhost:8000/v1/classify \
+curl --fail-with-body http://localhost:8000/v1/systemone \
   -H 'Content-Type: application/json' \
   --data-binary @- <<'JSON'
 {
-  "state": "I was charged twice for the same order. Please refund the duplicate charge.",
+  "state": "Help! My payouts have been failing for 3 days.",
+  "model": "jev-latest",
   "questions": {
-    "team": {
+    "department": {
       "type": "choice",
-      "instructions": "Which team should handle this request?",
+      "instructions": "Which team should handle this?",
       "criteria": {
-        "billing": "Billing and payment disputes",
-        "shipping": "Shipping and delivery",
-        "access": "Account access and login"
+        "billing": "Payments, invoicing, refunds",
+        "technical": "Bugs, outages, integrations",
+        "sales": "Pricing, upgrades, new accounts"
       }
     },
-    "urgency": {
+    "frustration": {
       "type": "score",
-      "instructions": "How urgently should this request be handled?",
-      "criteria": ["Routine", "Soon", "Immediate"]
+      "instructions": "How frustrated is the customer?",
+      "criteria": ["Calm", "Frustrated", "Very angry"]
     },
-    "refund_needed": {
+    "is_urgent": {
       "type": "noul",
-      "instructions": "Does the customer request a refund?"
+      "instructions": "Does this convey urgency?"
     }
   }
 }
 JSON
 ```
 
-The response contains Julia's answers and `execution_time_ms`. This example shows the shape of one answer; the numbers are illustrative:
+If you set `API_KEYS`, add `-H 'Authorization: Bearer <key>'`. The response has one answer per question, under the same names. The numbers below are illustrative:
 
 ```json
 {
+  "model": "SupersonicLabs/Julia-1",
   "answers": {
-    "team": {
+    "department": {
       "type": "choice",
-      "choice": "billing",
-      "probabilities": {"billing": 0.9, "shipping": 0.06, "access": 0.04},
-      "max_probability": 0.9
-    }
+      "choice": "technical",
+      "probabilities": {"billing": 0.03, "technical": 0.96, "sales": 0.01},
+      "confidence": 0.94
+    },
+    "frustration": {
+      "type": "score",
+      "score": 1.05,
+      "legend": {"0": "Calm", "1": "Frustrated", "2": "Very angry"},
+      "probabilities": {"0": 0.0, "1": 0.95, "2": 0.05},
+      "confidence": 0.92
+    },
+    "is_urgent": {"type": "noul", "noul": 0.95}
   },
-  "execution_time_ms": 12.4
+  "usage": {"input_tokens": 296, "output_tokens": 0}
 }
 ```
 
-Each question has its own answer. Execution time includes input encoding and inference. It does not include queue time or HTTP processing. Latency depends on the input and hardware.
+`state` can be a string, a JSON object, or an array. Instructions and criteria can also be objects or arrays, and the model sees them as JSON text. The `model` field is optional. Any value is accepted, and the response always reports this server's model. Inference time, excluding queue time, is in the `Server-Timing` response header.
+
+### With the TypeSafe SDK
+
+Point TypeSafe's SDK at this server:
+
+```python
+from typesafe_sdk import Choice, TypeSafeClient
+
+client = TypeSafeClient(api_key="<key>", base_url="http://localhost:8000")
+response = client.system_one(
+    state="Help! My payouts have been failing for 3 days.",
+    questions={
+        "department": Choice(
+            instructions="Which team should handle this?",
+            criteria={"billing": "Payments", "technical": "Bugs and outages"},
+        )
+    },
+)
+print(response.answers["department"].choice)
+```
+
+The SDK requires an API key even when the server has no `API_KEYS`. Any value works in that case.
 
 ### Question types
 
-| Type | Criteria | Result |
+| Type | Criteria | Answer |
 | --- | --- | --- |
-| `choice` | An object with 2–20 IDs and descriptions | `choice`: the selected ID |
-| `score` | An ordered list of 2–20 descriptions | `score`: the expected zero-based index; it can be fractional |
-| `noul` | Optional descriptions for `false` and `true` | `noul`: the probability of true, from 0 to 1 |
+| `choice` | An object mapping 2–20 option IDs to descriptions; `null` uses the ID as the description | `choice`, `probabilities`, `confidence` |
+| `score` | An ordered list of 2–20 level descriptions | `score` (the expected level, can be fractional), `legend`, `probabilities`, `confidence` |
+| `noul` | Optional `true` and `false` descriptions | `noul`: the probability of yes, from 0 to 1 |
 
-All answers include `type` and `probabilities`. Choice and score answers also include `max_probability`. The server preserves your IDs and criterion descriptions.
+`confidence` goes from 0 (probability spread evenly) to 1 (all probability on one option). It is calculated as `(n × highest probability − 1) / (n − 1)` for `n` options, the formula Jev's documentation uses to explain its confidence. Jev may compute it differently.
 
-For `noul`, omitted or `null` criteria use the literal labels `false` and `true`. To supply descriptions, use both keys:
+### Switching from Jev
 
-```json
-"criteria": {
-  "false": "No payment is involved",
-  "true": "A payment is involved"
-}
-```
+Requests and responses have the same shape, but this server runs a different model on your own hardware:
 
-A `noul` result is a probability, not a JSON boolean. Your application can apply a threshold if it needs a boolean.
+- **Different answers.** Julia-1 is not Jev. Its probabilities and confidence differ, so re-check any thresholds you tuned on Jev.
+- **Smaller limits.** Choice questions allow 20 options, not 255. Requests allow at most 32 questions. The whole input must fit `MAX_LENGTH`, at most 8,192 tokens, where Jev allows 64k. Each description must fit 48 tokens. Requests over these limits get HTTP 422.
+- **Token usage.** `input_tokens` counts the tokens the model processed. Each question encodes the state separately, so the count grows with the number of questions. `output_tokens` is always 0.
+- **Model name.** `model` in responses and `GET /v1/models` is `MODEL_ID`, such as `SupersonicLabs/Julia-1`, not a Jev version.
 
 ## API reference
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /` | Redirect to `/docs` |
-| `POST /v1/classify` | Run inference |
+| `POST /v1/systemone` | Answer typed questions about a state |
+| `GET /v1/models` | List the served model |
 | `GET /health` | Report whether the model is loaded |
 | `GET /v1/info` | Show model parameters, versions, device, and runtime settings |
 | `GET /docs` | Open the interactive API docs, including a sample request |
 | `GET /openapi.json` | Get the OpenAPI schema |
+| `GET /` | Redirect to `/docs` |
+
+When `API_KEYS` is set, the `/v1` endpoints require `Authorization: Bearer <key>`. `/health` and the docs stay open.
 
 A healthy server returns HTTP 200 with:
 
@@ -143,8 +180,8 @@ A healthy server returns HTTP 200 with:
 
 - 1–32 questions per request.
 - 2–20 criteria for each choice or score question.
-- At most 131,072 characters for state text, 128 for IDs, 8,192 for instructions, and 4,096 for each criterion description.
-- Text must not be blank. Unknown fields are rejected.
+- At most 131,072 characters for string state, 128 for IDs, and 8,192 for each instruction or description string.
+- Text must not be blank, and objects and arrays must not be empty. Unknown fields inside questions are rejected; unknown top-level fields are ignored.
 - The full encoded input must fit `MAX_LENGTH`. Questions and criteria must also fit `HEAD_LENGTH`.
 - Each criterion description must fit the model's 48-token limit.
 
@@ -152,14 +189,18 @@ Character limits and token limits are separate. The server rejects text that wou
 
 ### Errors
 
+Status codes match Jev's, so its SDKs handle them the same way:
+
 | Status | Meaning |
 | --- | --- |
+| `401` | Missing or invalid API key |
 | `422` | Invalid input or exceeded token limit; see `detail` in the response |
 | `429` | Rate limit exceeded; includes `Retry-After` in seconds |
-| `503` | Model unavailable or inference queue full; full queues include `Retry-After: 1` |
+| `529` | Inference queue full; includes `Retry-After: 1` |
+| `503` | Model not loaded yet |
 | `500` | Inference failed; check the server logs |
 
-If the model cannot load, startup fails. The server does not accept requests until loading succeeds.
+TypeSafe's SDKs retry `429` and `529` with backoff by default. If the model cannot load, startup fails. The server does not accept requests until loading succeeds.
 
 ## Configuration
 
@@ -179,6 +220,7 @@ Edit `.env` before starting the server. Environment variables take priority over
 | `RATE_LIMIT_PER_MINUTE` | `60` | Requests per minute for each client; `0` disables rate limiting |
 | `RATE_LIMIT_BURST` | `10` | Requests a client can send at once before the per-minute rate applies |
 | `CLIENT_IP_HEADER` | empty | Header with the real client IP when behind a proxy, such as `CF-Connecting-IP` |
+| `API_KEYS` | empty | Comma-separated bearer tokens for the `/v1` endpoints; empty leaves them open |
 
 `HEAD_LENGTH + 4` must be smaller than `MAX_LENGTH`. Invalid settings stop startup.
 
@@ -245,11 +287,11 @@ Use one Uvicorn worker per container. Each process loads its own model. The mode
 
 The server runs one inference request at a time on a separate thread. Each question uses a batch size of one. Extra requests wait in the bounded queue. A cancelled HTTP request keeps its slot until inference finishes. On shutdown, the server stops accepting work and waits for accepted requests to finish.
 
-The API has no built-in authentication. Use a trusted private network or a reverse proxy with TLS, authentication, and request-size limits.
+Set `API_KEYS` before exposing the server beyond your machine. Generate a key with `openssl rand -hex 32`, and list several keys, separated by commas, to give each client its own. Keys travel in a header, so serve the API over TLS; a Cloudflare Tunnel provides it. Use a reverse proxy for request-size limits.
 
 ### Rate limiting
 
-Each client gets `RATE_LIMIT_BURST` requests at once, then refills at `RATE_LIMIT_PER_MINUTE`. Requests over the limit get HTTP 429 before reaching the model. `/health` is exempt. Limits are kept in memory per process and reset on restart.
+Each client gets `RATE_LIMIT_BURST` requests at once, then refills at `RATE_LIMIT_PER_MINUTE`. Requests over the limit get HTTP 429 before reaching the model or checking the API key. `/health` is exempt. Limits are kept in memory per process and reset on restart.
 
 By default, clients are identified by their connection address. Behind a proxy, every request comes from the proxy, so all clients share one limit. Set `CLIENT_IP_HEADER` to the header your proxy uses for the real client IP. For a Cloudflare Tunnel, use:
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Per-client rate limiting with HTTP 429 and `Retry-After`, configured by `RATE_LIMIT_PER_MINUTE` and `RATE_LIMIT_BURST`.
+- `CLIENT_IP_HEADER` identifies clients behind a proxy, such as `CF-Connecting-IP` for Cloudflare Tunnel.
+
 ## 0.1.0 — 2026-09-27
 
 Initial release of Supersonic's Julia-1 Server.

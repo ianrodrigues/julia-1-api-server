@@ -155,6 +155,7 @@ Character limits and token limits are separate. The server rejects text that wou
 | Status | Meaning |
 | --- | --- |
 | `422` | Invalid input or exceeded token limit; see `detail` in the response |
+| `429` | Rate limit exceeded; includes `Retry-After` in seconds |
 | `503` | Model unavailable or inference queue full; full queues include `Retry-After: 1` |
 | `500` | Inference failed; check the server logs |
 
@@ -175,6 +176,9 @@ Edit `.env` before starting the server. Environment variables take priority over
 | `HOST` | `0.0.0.0` | Bind address; keep this value inside Docker |
 | `PORT` | `8000` | HTTP port |
 | `MAX_PENDING_REQUESTS` | `16` | Maximum running and queued requests combined |
+| `RATE_LIMIT_PER_MINUTE` | `60` | Requests per minute for each client; `0` disables rate limiting |
+| `RATE_LIMIT_BURST` | `10` | Requests a client can send at once before the per-minute rate applies |
+| `CLIENT_IP_HEADER` | empty | Header with the real client IP when behind a proxy, such as `CF-Connecting-IP` |
 
 `HEAD_LENGTH + 4` must be smaller than `MAX_LENGTH`. Invalid settings stop startup.
 
@@ -241,7 +245,21 @@ Use one Uvicorn worker per container. Each process loads its own model. The mode
 
 The server runs one inference request at a time on a separate thread. Each question uses a batch size of one. Extra requests wait in the bounded queue. A cancelled HTTP request keeps its slot until inference finishes. On shutdown, the server stops accepting work and waits for accepted requests to finish.
 
-The API has no built-in authentication. Use a trusted private network or a reverse proxy with TLS, authentication, request-size limits, and rate limits. Compose binds to localhost and gives the model ten minutes to start before health checks count failures. Increase that period if the first download is slow.
+The API has no built-in authentication. Use a trusted private network or a reverse proxy with TLS, authentication, and request-size limits.
+
+### Rate limiting
+
+Each client gets `RATE_LIMIT_BURST` requests at once, then refills at `RATE_LIMIT_PER_MINUTE`. Requests over the limit get HTTP 429 before reaching the model. `/health` is exempt. Limits are kept in memory per process and reset on restart.
+
+By default, clients are identified by their connection address. Behind a proxy, every request comes from the proxy, so all clients share one limit. Set `CLIENT_IP_HEADER` to the header your proxy uses for the real client IP. For a Cloudflare Tunnel, use:
+
+```bash
+CLIENT_IP_HEADER=CF-Connecting-IP
+```
+
+Set this only when every request passes through that proxy. Clients that can reach the server directly can send any value in the header and bypass the limit. Compose binds to localhost, so with a tunnel only `cloudflared` and local processes can connect.
+
+For stronger protection, also add a rate-limiting rule in Cloudflare. It blocks floods before they reach your machine. Compose binds to localhost and gives the model ten minutes to start before health checks count failures. Increase that period if the first download is slow.
 
 The container runs as root to use `/root/.cache/huggingface`. Compose drops Linux capabilities and blocks privilege escalation. A non-root setup needs a writable cache directory and volume.
 

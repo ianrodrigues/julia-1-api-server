@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", min_length=1)
     port: int = Field(default=8000, ge=1, le=65535)
     max_pending_requests: int = Field(default=16, ge=1, le=1024)
+    rate_limit_per_minute: int = Field(default=60, ge=0)
+    rate_limit_burst: int = Field(default=10, ge=1)
+    client_ip_header: str = ""
 
     @model_validator(mode="after")
     def validate_context_budget(self) -> "Settings":

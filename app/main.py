@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from app import __version__
 from app.config import Settings
+from app.ratelimit import RateLimiter, retry_after_header
 from app.schemas import ClassifyRequest, ClassifyResponse, HealthResponse
 from app.service import (
     InferenceBusyError,
@@ -44,6 +45,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
+    if settings.rate_limit_per_minute:
+        limiter = RateLimiter(settings.rate_limit_per_minute, settings.rate_limit_burst)
+
+        @application.middleware("http")
+        async def rate_limit(request: Request, call_next):
+            # Health checks come from the container runtime and must never be throttled.
+            if request.url.path == "/health":
+                return await call_next(request)
+            wait = limiter.acquire(client_key(request, settings.client_ip_header))
+            if wait:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too many requests; retry later"},
+                    headers={"Retry-After": retry_after_header(wait)},
+                )
+            return await call_next(request)
+
     @application.get("/", include_in_schema=False)
     async def root():
         return RedirectResponse(url="/docs")
@@ -75,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response_model=ClassifyResponse,
         responses={
             422: {"description": "Invalid question or token budget"},
+            429: {"description": "Rate limit exceeded"},
             503: {"description": "Model unavailable or queue full"},
             500: {"description": "Inference failed"},
         },
@@ -98,6 +117,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(500, "Inference failed") from error
 
     return application
+
+
+def client_key(request: Request, header: str) -> str:
+    """Use a proxy-supplied client IP only when configured; otherwise the peer address."""
+    if header and (forwarded := request.headers.get(header, "").strip()):
+        return forwarded
+    return request.client.host if request.client else "unknown"
 
 
 app = create_app()

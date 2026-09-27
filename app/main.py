@@ -4,9 +4,11 @@ import asyncio
 import hmac
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.config import JULIA_RELEASE_DATE, Settings
@@ -20,6 +22,9 @@ from app.service import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Built by `make playground`; the API still serves without it.
+PLAYGROUND_DIR = Path(__file__).resolve().parent.parent / "playground" / "dist"
 
 # Jev's status for a temporarily overloaded service; its SDKs retry it with backoff.
 OVERLOADED = 529
@@ -55,8 +60,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         @application.middleware("http")
         async def rate_limit(request: Request, call_next):
-            # Health checks come from the container runtime and must never be throttled.
-            if request.url.path == "/health":
+            # Only API calls reach the model; pages, assets, and health checks stay unthrottled.
+            if not request.url.path.startswith("/v1/"):
                 return await call_next(request)
             wait = limiter.acquire(client_key(request, settings.client_ip_header))
             if wait:
@@ -78,9 +83,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 401, "Missing or invalid API key", headers={"WWW-Authenticate": "Bearer"}
             )
 
+    playground = PLAYGROUND_DIR.is_dir()
+    if playground:
+        application.mount(
+            "/playground", StaticFiles(directory=PLAYGROUND_DIR, html=True), name="playground"
+        )
+
     @application.get("/", include_in_schema=False)
     async def root():
-        return RedirectResponse(url="/docs")
+        return RedirectResponse(url="/playground/" if playground else "/docs")
 
     @application.get(
         "/health", response_model=HealthResponse, responses={503: {"model": HealthResponse}}

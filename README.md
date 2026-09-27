@@ -19,7 +19,7 @@ docker run -d --name julia --pull=always \
 
 No repository clone, Python installation, or `.env` file is needed. The first start downloads the model weights and tokenizer. The `hf-cache` volume keeps them for future runs.
 
-Follow startup with `docker logs -f julia`. Once the model is loaded, open [http://localhost:8000/docs](http://localhost:8000/docs) to try a sample request.
+Follow startup with `docker logs -f julia`. Once the model is loaded, open [http://localhost:8000/playground](http://localhost:8000/playground) to try Julia-1 in your browser, or [http://localhost:8000/docs](http://localhost:8000/docs) for the API reference.
 
 If port 8000 is busy, use `-p 127.0.0.1:18000:8000` and open `http://localhost:18000/docs` instead. Stop the container with `docker stop julia` and start it again with `docker start julia`.
 
@@ -37,7 +37,7 @@ docker compose logs -f julia
 
 The first start downloads about 550.5 MiB of model weights, plus tokenizer files. The server starts accepting requests after the model has loaded.
 
-Open [http://localhost:8000/docs](http://localhost:8000/docs) to try the API. The root URL also redirects there. Check the server with:
+Open [http://localhost:8000/playground](http://localhost:8000/playground) to try Julia-1, or [http://localhost:8000/docs](http://localhost:8000/docs) to try the API. The root URL redirects to the playground. Check the server with:
 
 ```bash
 curl --fail http://localhost:8000/health
@@ -52,6 +52,20 @@ docker compose down
 ```
 
 Model files stay in the `hf-cache` volume. `docker compose down -v` deletes that cache. After changing the source code, rebuild with `docker compose up -d --build`.
+
+## Playground
+
+The server includes a web playground at `/playground` for people who want to try Julia-1 without writing code. Pick a sample scenario, such as a support ticket, a product review, or a scam message, or write your own text and questions. Julia-1's answers show the chosen option, where the text lands on a scale, or the chance of yes, with bars for every probability and a plain-language certainty label. **Show the API request** gives the matching `curl` command.
+
+The playground calls the same `/v1/systemone` endpoint as any other client, so it uses the same rate limit and API keys. When `API_KEYS` is set, it asks visitors for a key and remembers it in their browser.
+
+The Docker image builds the playground. To work on it locally, install [Bun](https://bun.sh) and run:
+
+```bash
+make playground-dev
+```
+
+This serves the playground with hot reload at `http://localhost:3000/playground` and forwards API calls to `https://julia-1.rdgs.net`. Set `JULIA_API_URL=http://localhost:8000` to use a local server instead. `make playground` builds the static files into `playground/dist`, which `make run-dev` then serves.
 
 ## Send a request
 
@@ -166,7 +180,8 @@ Requests and responses have the same shape, but this server runs a different mod
 | `GET /v1/info` | Show model parameters, versions, device, and runtime settings |
 | `GET /docs` | Open the interactive API docs, including a sample request |
 | `GET /openapi.json` | Get the OpenAPI schema |
-| `GET /` | Redirect to `/docs` |
+| `GET /playground` | Open the web playground |
+| `GET /` | Redirect to `/playground`, or to `/docs` when the playground isn't built |
 
 When `API_KEYS` is set, the `/v1` endpoints require `Authorization: Bearer <key>`. `/health` and the docs stay open.
 
@@ -254,6 +269,8 @@ The installer gets Julia's Python runtime from the pinned model repository. Do n
 | `make test` | Run API and service tests without model downloads |
 | `make lint` | Check Python style and formatting |
 | `make test-integration` | Load the real model and test inference |
+| `make playground` | Build the web playground (requires Bun) |
+| `make playground-dev` | Run the playground with hot reload |
 | `make docker-build` | Build the Docker image |
 | `make docker-up` | Start the Compose service |
 | `make docker-down` | Stop the Compose service |
@@ -291,7 +308,7 @@ Set `API_KEYS` before exposing the server beyond your machine. Generate a key wi
 
 ### Rate limiting
 
-Each client gets `RATE_LIMIT_BURST` requests at once, then refills at `RATE_LIMIT_PER_MINUTE`. Requests over the limit get HTTP 429 before reaching the model or checking the API key. `/health` is exempt. Limits are kept in memory per process and reset on restart.
+Each client gets `RATE_LIMIT_BURST` requests at once, then refills at `RATE_LIMIT_PER_MINUTE`. Requests over the limit get HTTP 429 before reaching the model or checking the API key. Only `/v1` endpoints count; `/health`, the playground's files, and the docs are exempt. Limits are kept in memory per process and reset on restart.
 
 By default, clients are identified by their connection address. Behind a proxy, every request comes from the proxy, so all clients share one limit. Set `CLIENT_IP_HEADER` to the header your proxy uses for the real client IP. For a Cloudflare Tunnel, use:
 

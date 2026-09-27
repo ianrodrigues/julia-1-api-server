@@ -1,9 +1,15 @@
 PYTHON ?= python
 
-.PHONY: run-dev docker-build docker-up docker-down test lint test-integration
+.PHONY: run-dev playground playground-dev docker-build docker-up docker-down test lint test-integration
 
 run-dev:
 	$(PYTHON) -m app.main
+
+playground:
+	cd playground && bun install --frozen-lockfile && bun run build
+
+playground-dev:
+	cd playground && bun install --frozen-lockfile && bun run dev
 
 docker-build:
 	docker compose build

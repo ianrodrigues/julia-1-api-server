@@ -1,4 +1,12 @@
 # syntax=docker/dockerfile:1
+# The playground is static files, so build it once on the native platform.
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.2 AS playground
+WORKDIR /playground
+COPY playground/package.json playground/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY playground ./
+RUN bun run typecheck && bun run build
+
 FROM python:3.11-slim AS builder
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -31,6 +39,7 @@ RUN apt-get update \
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
 COPY app ./app
+COPY --from=playground /playground/dist ./playground/dist
 COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/julia-1-api-server/
 COPY licenses /usr/share/doc/julia-1-api-server/licenses
 EXPOSE 8000

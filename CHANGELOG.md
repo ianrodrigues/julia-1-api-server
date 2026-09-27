@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Web playground at `/playground` with sample scenarios, a question builder, and visual answers; the root URL now redirects to it.
+- The Docker image builds and serves the playground.
+- Rate limiting now applies only to `/v1` endpoints, so page and asset loads don't count.
+
 ## 0.1.0 — 2026-09-27
 
 Initial release of SupersonicLabs Julia-1 API Server.

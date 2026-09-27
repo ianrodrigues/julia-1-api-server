@@ -9,3 +9,5 @@ __pycache__
 tests
 *.safetensors
 .cache
+playground/node_modules
+playground/dist

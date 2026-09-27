@@ -292,3 +292,32 @@ def test_probabilities_sum_to_one(client, payload):
     }
     for answer in client.post("/v1/systemone", json=payload).json()["answers"].values():
         assert math.isclose(sum(answer["probabilities"].values()), 1)
+
+
+def playground_client(monkeypatch, directory, **options):
+    monkeypatch.setattr("app.main.PLAYGROUND_DIR", directory)
+    return TestClient(create_app(Settings(_env_file=None, **options)), follow_redirects=False)
+
+
+def test_playground_is_served_and_root_points_to_it(monkeypatch, tmp_path):
+    (tmp_path / "index.html").write_text("<title>Julia-1 Playground</title>")
+    (tmp_path / "app.js").write_text("console.log('hi')")
+    client = playground_client(monkeypatch, tmp_path)
+    assert client.get("/").headers["location"] == "/playground/"
+    assert "Julia-1 Playground" in client.get("/playground/").text
+    assert client.get("/playground", follow_redirects=True).status_code == 200
+    assert client.get("/playground/app.js").status_code == 200
+
+
+def test_root_falls_back_to_docs_without_a_built_playground(monkeypatch, tmp_path):
+    client = playground_client(monkeypatch, tmp_path / "missing")
+    assert client.get("/").headers["location"] == "/docs"
+    assert client.get("/playground/").status_code == 404
+
+
+def test_playground_assets_do_not_spend_the_rate_limit(monkeypatch, tmp_path):
+    (tmp_path / "index.html").write_text("ok")
+    client = playground_client(monkeypatch, tmp_path, rate_limit_per_minute=1, rate_limit_burst=1)
+    assert all(client.get("/playground/").status_code == 200 for _ in range(5))
+    assert client.get("/v1/models").status_code == 200
+    assert client.get("/v1/models").status_code == 429

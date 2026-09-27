@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-09-27
 
 - Web playground at `/playground` with sample scenarios, a question builder, and visual answers; the root URL now redirects to it.
 - The Docker image builds and serves the playground.

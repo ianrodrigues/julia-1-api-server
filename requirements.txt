@@ -1,0 +1,11 @@
+# After installing dependencies, run: python -m scripts.install_runtime
+# Julia's runtime is distributed in its Hugging Face repository, not PyPI.
+fastapi==0.141.1
+uvicorn==0.54.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+huggingface-hub==1.3.5
+torch==2.14.0
+transformers==5.0.0
+numpy==2.3.5
+safetensors==0.8.0

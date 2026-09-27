@@ -1,0 +1,31 @@
+services:
+  julia:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: supersonic-julia-server:local
+    env_file:
+      - .env
+    environment:
+      HF_HOME: /root/.cache/huggingface
+      PORT: ${PORT:-8000}
+    ports:
+      - "127.0.0.1:${PORT:-8000}:${PORT:-8000}"
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 120s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:$${PORT:-8000}/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10m
+      retries: 3
+
+volumes:
+  hf-cache:

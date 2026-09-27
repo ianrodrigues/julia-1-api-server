@@ -80,7 +80,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},enable=${{ !github.event.release.prerelease }}
             type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
           labels: |
-            org.opencontainers.image.title=Supersonic's Julia-1 Server
+            org.opencontainers.image.title=SupersonicLabs Julia-1 API Server
             org.opencontainers.image.licenses=MIT
       - name: Build and publish both CPU architectures
         id: image

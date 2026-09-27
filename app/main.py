@@ -41,7 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await service.close()
 
     application = FastAPI(
-        title="Supersonic's Julia-1 Server",
+        title="SupersonicLabs Julia-1 API Server",
         description=(
             "A Jev-compatible System One API for Julia-1: classify inputs, "
             "score them against a rubric, and evaluate yes/no questions."

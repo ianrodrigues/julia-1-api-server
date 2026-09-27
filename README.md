@@ -1,4 +1,4 @@
-# Supersonic's Julia-1 Server
+# SupersonicLabs Julia-1 API Server
 
 A self-hosted, **Jev-compatible** HTTP API for [Julia-1](https://huggingface.co/SupersonicLabs/Julia-1). Send text or JSON and typed questions. Get classifications, scores, and yes/no probabilities.
 

@@ -17,7 +17,7 @@ from app.config import JULIA_REVISION
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="supersonic-julia-runtime-") as directory:
+    with tempfile.TemporaryDirectory(prefix="julia-1-runtime-") as directory:
         snapshot = snapshot_download(
             repo_id="SupersonicLabs/Julia-1",
             revision=JULIA_REVISION,
@@ -28,7 +28,7 @@ def main() -> None:
             [sys.executable, "-m", "pip", "install", "--no-deps", snapshot],
             check=True,
         )
-        documentation = Path(sys.prefix) / "share" / "doc" / "supersonic-julia"
+        documentation = Path(sys.prefix) / "share" / "doc" / "julia-1"
         documentation.mkdir(parents=True, exist_ok=True)
         for source in Path(snapshot).iterdir():
             if source.is_file() and (

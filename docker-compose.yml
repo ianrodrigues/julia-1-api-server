@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: supersonic-julia-server:local
+    image: julia-1-api-server:local
     env_file:
       - .env
     environment:

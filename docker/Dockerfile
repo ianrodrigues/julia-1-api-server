@@ -31,8 +31,8 @@ RUN apt-get update \
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
 COPY app ./app
-COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/supersonic-julia-server/
-COPY licenses /usr/share/doc/supersonic-julia-server/licenses
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/julia-1-api-server/
+COPY licenses /usr/share/doc/julia-1-api-server/licenses
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10m --retries=3 \
     CMD curl --fail --silent --show-error "http://127.0.0.1:${PORT}/health" || exit 1

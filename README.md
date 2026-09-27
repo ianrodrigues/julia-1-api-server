@@ -14,7 +14,7 @@ With Docker installed, pull and start the latest release from GitHub Container R
 docker run -d --name julia --pull=always \
   -p 127.0.0.1:8000:8000 \
   -v hf-cache:/root/.cache/huggingface \
-  ghcr.io/ianrodrigues/supersonic-julia-server:latest
+  ghcr.io/ianrodrigues/julia-1-api-server:latest
 ```
 
 No repository clone, Python installation, or `.env` file is needed. The first start downloads the model weights and tokenizer. The `hf-cache` volume keeps them for future runs.
@@ -28,8 +28,8 @@ If port 8000 is busy, use `-p 127.0.0.1:18000:8000` and open `http://localhost:1
 Install Docker with Compose, then run:
 
 ```bash
-git clone https://github.com/ianrodrigues/supersonic-julia-server.git
-cd supersonic-julia-server
+git clone https://github.com/ianrodrigues/julia-1-api-server.git
+cd julia-1-api-server
 cp .env.example .env
 docker compose up -d
 docker compose logs -f julia
@@ -262,7 +262,7 @@ For API-only work, install just `requirements-dev.txt`. CI runs the fast tests o
 
 ## Published images and releases
 
-GitHub releases publish CPU images to `ghcr.io/ianrodrigues/supersonic-julia-server` for `linux/amd64` and `linux/arm64`.
+GitHub releases publish CPU images to `ghcr.io/ianrodrigues/julia-1-api-server` for `linux/amd64` and `linux/arm64`.
 
 The [quick run](#quick-run) command uses `latest`. To use a specific release, replace `:latest` with its version tag, such as `:0.1.0`.
 
@@ -312,11 +312,11 @@ Build with a CUDA PyTorch wheel that supports your driver:
 ```bash
 docker build -f docker/Dockerfile \
   --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu130 \
-  -t supersonic-julia-server:cuda .
+  -t julia-1-api-server:cuda .
 docker run --rm --gpus all -p 127.0.0.1:8000:8000 \
   -e DEVICE=cuda \
   -v julia_gpu_cache:/root/.cache/huggingface \
-  supersonic-julia-server:cuda
+  julia-1-api-server:cuda
 ```
 
 This requires NVIDIA Container Toolkit and a BF16-capable GPU. Setting `DEVICE=cuda` in the CPU image is not enough. GPU inference is not tested in CI.
@@ -325,7 +325,7 @@ This requires NVIDIA Container Toolkit and a BF16-capable GPU. Setting `DEVICE=c
 
 [Supersonic Labs](https://huggingface.co/SupersonicLabs/Julia-1) created Julia-1 and its Python runtime. [Hugging Face](https://huggingface.co) hosts the model and provides the Hub and Transformers libraries.
 
-Copyright © 2026 Ian Rodrigues. This wrapper is [MIT licensed](LICENSE). Julia and other dependencies keep their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details. The Docker image includes these notices and the Apache-2.0 license text at `/usr/share/doc/supersonic-julia-server`.
+Copyright © 2026 Ian Rodrigues. This wrapper is [MIT licensed](LICENSE). Julia and other dependencies keep their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details. The Docker image includes these notices and the Apache-2.0 license text at `/usr/share/doc/julia-1-api-server`.
 
 This project is independent and is not affiliated with Supersonic Labs or Hugging Face.
 

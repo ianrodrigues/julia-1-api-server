@@ -55,11 +55,19 @@ Model files stay in the `hf-cache` volume. `docker compose down -v` deletes that
 
 ## Playground
 
-The server includes a web playground at `/playground` for people who want to try Julia-1 without writing code. Pick a sample scenario, such as a support ticket, a product review, or a scam message, or write your own text and questions. Julia-1's answers show the chosen option, where the text lands on a scale, or the chance of yes, with bars for every probability and a plain-language certainty label. **Show the API request** gives the matching `curl` command.
+The server includes a web playground at `/playground` for people who want to try Julia-1 without writing code. Pick a sample scenario, such as a support ticket, a product to categorize, or a scam message, or write your own text and questions. Julia-1's answers show the chosen option, where the text lands on a scale, or the chance of yes, with bars for every probability and a plain-language certainty label. **Show the API request** gives the matching `curl` command.
 
 The playground calls the same `/v1/systemone` endpoint as any other client, so it uses the same rate limit and API keys. When `API_KEYS` is set, it asks visitors for a key and remembers it in their browser.
 
-The Docker image builds the playground. To work on it locally, install [Bun](https://bun.sh) and run:
+The Docker image builds the playground. To add [Umami](https://umami.is) analytics, set the `UMAMI_WEBSITE_ID` build argument, or put it in `.env` for Compose, and rebuild:
+
+```bash
+UMAMI_WEBSITE_ID=<website-id> docker compose build
+```
+
+The ID is baked into the page at build time. Without it, the playground loads no analytics. Published images are built without one.
+
+To work on it locally, install [Bun](https://bun.sh) and run:
 
 ```bash
 make playground-dev

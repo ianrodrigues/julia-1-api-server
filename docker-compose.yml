@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        UMAMI_WEBSITE_ID: ${UMAMI_WEBSITE_ID:-}
     image: julia-1-api-server:local
     env_file:
       - .env

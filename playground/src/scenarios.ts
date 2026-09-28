@@ -24,6 +24,61 @@ export const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    id: "catalog",
+    title: "Product catalog",
+    blurb: "File a new product under the right category",
+    state:
+      "Anker 737 Power Bank, 24,000mAh portable charger with 140W output, USB-C, smart digital " +
+      "display. Charges laptops, iPhone 15 and Galaxy phones.",
+    questions: [
+      {
+        type: "choice",
+        instructions: "Which store category does this product belong in?",
+        options: [
+          "Electronics and gadgets",
+          "Kitchen and cookware",
+          "Beauty, skin and hair care",
+          "Clothing and shoes",
+          "Toys and games for kids",
+          "Pet food and supplies",
+        ],
+      },
+      {
+        type: "choice",
+        instructions: "Which subcategory fits best?",
+        options: ["Chargers and power banks", "Phone cases", "Headphones and speakers", "Cables and adapters"],
+      },
+      {
+        type: "score",
+        instructions: "What price range is this product in?",
+        options: ["Budget", "Mid-range", "Premium"],
+      },
+    ],
+  },
+  {
+    id: "expense",
+    title: "Expense report",
+    blurb: "Sort a receipt into the right bucket",
+    state: "Team lunch with a client at an Italian restaurant, 4 people, $186.40",
+    questions: [
+      {
+        type: "choice",
+        instructions: "Which expense category does this belong to?",
+        options: ["Travel", "Meals and entertainment", "Software and subscriptions", "Office supplies", "Equipment"],
+      },
+      {
+        type: "choice",
+        instructions: "What kind of meal was it?",
+        options: ["Breakfast", "Lunch", "Dinner", "Coffee or snacks"],
+      },
+      {
+        type: "score",
+        instructions: "How large is this expense?",
+        options: ["Small", "Medium", "Large"],
+      },
+    ],
+  },
+  {
     id: "review",
     title: "Product review",
     blurb: "What did they love, and what did they hate?",
@@ -50,32 +105,7 @@ export const SCENARIOS: Scenario[] = [
     ],
   },
 
-  {
-    id: "delivery",
-    title: "Delivery chat",
-    blurb: "Understand a hungry customer in one pass",
-    state:
-      "Where is my order?? I ordered pizza over an hour ago and the app still says 'preparing'. " +
-      "I'm starving. If it's not here in 15 minutes just cancel it.",
-    questions: [
-      {
-        type: "choice",
-        instructions: "What does the customer want?",
-        options: [
-          "Know where the order is",
-          "Change the delivery address",
-          "Complain about the food quality",
-          "Add items to the order",
-        ],
-      },
-      {
-        type: "score",
-        instructions: "How urgent is this?",
-        options: ["Not urgent", "Somewhat urgent", "Very urgent"],
-      },
-      { type: "noul", instructions: "Is the customer happy?", options: [] },
-    ],
-  },
+
 
   {
     id: "phishing",
@@ -99,28 +129,7 @@ export const SCENARIOS: Scenario[] = [
     ],
   },
 
-  {
-    id: "sales",
-    title: "Sales lead",
-    blurb: "Qualify an inbound message",
-    state:
-      "Hey! We're a team of 40 designers evaluating tools to replace our current setup before our " +
-      "contract ends in March. Could someone walk us through pricing for the business plan? " +
-      "We have budget approved for this quarter.",
-    questions: [
-      {
-        type: "choice",
-        instructions: "Who should reply?",
-        options: ["Sales team", "Support team", "Recruiting team"],
-      },
-      {
-        type: "score",
-        instructions: "How ready are they to buy?",
-        options: ["Just browsing", "Curious", "Actively evaluating", "Ready to buy"],
-      },
-      { type: "noul", instructions: "Do they mention having a budget?", options: [] },
-    ],
-  },
+
 
 ];
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Optional Umami analytics for the playground, set with the `UMAMI_WEBSITE_ID` build argument.
+- New playground scenarios for product categorization and expense categorization replace the delivery chat and sales lead examples.
+
 ## 0.2.0 — 2026-09-27
 
 - Web playground at `/playground` with sample scenarios, a question builder, and visual answers; the root URL now redirects to it.

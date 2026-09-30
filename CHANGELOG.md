@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-09-30
 
 - Optional Umami analytics for the playground, set at runtime with the `UMAMI_WEBSITE_ID` environment variable; no image rebuild required.
 - New playground scenarios for product categorization and expense categorization replace the delivery chat and sales lead examples.

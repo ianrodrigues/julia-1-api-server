@@ -83,6 +83,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 401, "Missing or invalid API key", headers={"WWW-Authenticate": "Bearer"}
             )
 
+    @application.get("/playground/config.json", include_in_schema=False)
+    async def playground_config():
+        return JSONResponse(
+            content={"umamiWebsiteId": settings.umami_website_id.strip()},
+            headers={"Cache-Control": "no-store"},
+        )
+
     playground = PLAYGROUND_DIR.is_dir()
     if playground:
         application.mount(

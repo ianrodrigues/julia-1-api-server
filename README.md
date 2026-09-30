@@ -59,13 +59,13 @@ The server includes a web playground at `/playground` for people who want to try
 
 The playground calls the same `/v1/systemone` endpoint as any other client, so it uses the same rate limit and API keys. When `API_KEYS` is set, it asks visitors for a key and remembers it in their browser.
 
-The Docker image builds the playground. To add [Umami](https://umami.is) analytics, set the `UMAMI_WEBSITE_ID` build argument, or put it in `.env` for Compose, and rebuild:
+The Docker image builds the playground. To add [Umami](https://umami.is) analytics, set `UMAMI_WEBSITE_ID` at runtime. With Compose, put it in `.env` and recreate the container:
 
 ```bash
-UMAMI_WEBSITE_ID=<website-id> docker compose build
+docker compose up -d --force-recreate julia
 ```
 
-The ID is baked into the page at build time. Without it, the playground loads no analytics. Published images are built without one.
+With `docker run`, add `-e UMAMI_WEBSITE_ID=<website-id>` when creating the container. The playground reads the ID from the running server, so no image rebuild is needed. An empty or unset ID loads no analytics. Restart a local Python server after changing the setting.
 
 To work on it locally, install [Bun](https://bun.sh) and run:
 
@@ -73,7 +73,7 @@ To work on it locally, install [Bun](https://bun.sh) and run:
 make playground-dev
 ```
 
-This serves the playground with hot reload at `http://localhost:3000/playground` and forwards API calls to `https://julia-1.rdgs.net`. Set `JULIA_API_URL=http://localhost:8000` to use a local server instead. `make playground` builds the static files into `playground/dist`, which `make run-dev` then serves.
+This serves the playground with hot reload at `http://localhost:3000/playground` and forwards API calls and playground configuration to `https://julia-1.rdgs.net`. Set `JULIA_API_URL=http://localhost:8000` to use a local server instead. `make playground` builds the static files into `playground/dist`, which `make run-dev` then serves.
 
 ## Send a request
 

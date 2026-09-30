@@ -5,9 +5,7 @@ WORKDIR /playground
 COPY playground/package.json playground/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY playground ./
-# Optional Umami website ID for playground analytics; empty loads no analytics.
-ARG UMAMI_WEBSITE_ID=""
-RUN bun run typecheck && UMAMI_WEBSITE_ID="$UMAMI_WEBSITE_ID" bun run build
+RUN bun run typecheck && bun run build
 
 FROM python:3.11-slim AS builder
 

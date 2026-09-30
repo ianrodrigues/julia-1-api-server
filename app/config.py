@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     client_ip_header: str = ""
     # Comma-separated bearer tokens; empty leaves the API open.
     api_keys: str = ""
+    umami_website_id: str = ""
 
     @property
     def api_key_list(self) -> list[str]:

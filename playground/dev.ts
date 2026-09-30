@@ -18,6 +18,7 @@ const server = Bun.serve({
   routes: {
     "/": Response.redirect("/playground", 302),
     "/playground": playground,
+    "/playground/config.json": forward,
     "/v1/*": forward,
   },
   development: { hmr: true, console: true },

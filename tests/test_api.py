@@ -321,3 +321,18 @@ def test_playground_assets_do_not_spend_the_rate_limit(monkeypatch, tmp_path):
     assert all(client.get("/playground/").status_code == 200 for _ in range(5))
     assert client.get("/v1/models").status_code == 200
     assert client.get("/v1/models").status_code == 429
+
+
+@pytest.mark.parametrize("website_id", [None, "", "  ", "runtime-site-id"])
+def test_playground_config_reads_runtime_environment(monkeypatch, tmp_path, website_id):
+    # A stale static config must never shadow the runtime route.
+    (tmp_path / "config.json").write_text('{"umamiWebsiteId":"stale-build-id"}')
+    if website_id is None:
+        monkeypatch.delenv("UMAMI_WEBSITE_ID", raising=False)
+    else:
+        monkeypatch.setenv("UMAMI_WEBSITE_ID", website_id)
+    client = playground_client(monkeypatch, tmp_path, api_keys="private-key")
+    response = client.get("/playground/config.json")
+    assert response.status_code == 200
+    assert response.json() == {"umamiWebsiteId": (website_id or "").strip()}
+    assert response.headers["Cache-Control"] == "no-store"

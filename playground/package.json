@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun --hot ./dev.ts",
-    "build": "rm -rf dist && bun build ./index.html --outdir ./dist --production --public-path /playground/ --env=UMAMI_*",
+    "build": "rm -rf dist && bun build ./index.html --outdir ./dist --production --public-path /playground/",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
